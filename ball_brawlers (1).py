@@ -199,6 +199,7 @@ class PetConfig:
     base_color: tuple
     outline_color: tuple
     tags: tuple = (TAG_PET,)
+    skills: tuple = ()
 
 
 GREEN_PIP = EnemyConfig(
@@ -383,6 +384,7 @@ GREEN_PIP_PUP_CONFIG = PetConfig(
     radius=GREEN_PIP.radius,
     base_color=GREEN_PIP.base_color,
     outline_color=GREEN_PIP.outline_color,
+    skills=["contact_damage", "eye_of_sight"],
 )
 
 # key -> PetConfig, looked up by respawn_pets() from a player's pet_grants.
@@ -820,7 +822,11 @@ class Flagbearer(Skill):
         enemy.flagbearer_pulse_progress = progress
 
         is_player = getattr(enemy, "is_player", False)
-        allies = enemy.summons if is_player else (all_enemies or [])
+        # Include pets as allies for the player
+        if is_player:
+            allies = list(enemy.summons) + list(getattr(enemy, "pets", []))
+        else:
+            allies = all_enemies or []
         target = self._nearest(enemy, player) if is_player else player
         if target is None:
             return
@@ -1849,7 +1855,7 @@ class Pet(Combatant):
         self.is_pet = True
         self.alive = True
         self.damage_events = []
-        self.skills = []
+        self.skills = get_skills(list(config.skills)) if hasattr(config, 'skills') else []
         self.MOVE_SPEED_PIXEL_SCALE = MOVE_SPEED_PIXEL_SCALE
 
         angle = random.uniform(0, 2 * math.pi)
@@ -1861,6 +1867,11 @@ class Pet(Combatant):
         self.skill_flash_timer = 0.0
         self.skill_flash_duration = 0.0
         self.body_slam_pending = False
+
+        # Initialize skill-specific attributes for pets
+        for skill in self.skills:
+            if hasattr(skill, 'on_spawn'):
+                skill.on_spawn(self)
 
     @property
     def movement_speed(self):
@@ -1887,6 +1898,11 @@ class Pet(Combatant):
         self.spawn_timer = max(0.0, self.spawn_timer - dt)
         self.contact_cooldown_timer = max(0.0, self.contact_cooldown_timer - dt)
         self.retarget_timer -= dt
+
+        # Update pet skills (including Eye of Sight for flashing and targeting)
+        for skill in self.skills:
+            if hasattr(skill, 'update'):
+                skill.update(self, dt, None, arena_rect, all_enemies=enemies)
 
         if self.retarget_timer <= 0:
             living = [enemy for enemy in enemies if enemy.alive]

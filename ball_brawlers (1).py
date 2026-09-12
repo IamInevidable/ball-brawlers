@@ -464,6 +464,8 @@ class ContactDamage(Skill):
         if enemy.contact_cooldown_timer > 0:
             enemy.contact_cooldown_timer -= dt
             return
+        if player is None:
+            return
 
         dist = math.hypot(player.x - enemy.x, player.y - enemy.y)
         if dist <= player.radius + enemy.radius:
@@ -550,7 +552,7 @@ class EyeOfSight(Skill):
                         enemy.eye_of_sight_timer = random.uniform(self.NORMAL_MIN, self.NORMAL_MAX)
                     return
                 target = min(targets, key=lambda candidate: math.hypot(
-                    candidate.x - enemy.x, candidate.y - enemy.y))
+                    candidate.x - enemy.x, candidate.y - candidate.y))
 
             dx = target.x - enemy.x
             dy = target.y - enemy.y
@@ -3160,6 +3162,9 @@ def main():
                     enemies.append(Enemy(debug_x, debug_y, GREEN_PIP,
                                          spawn_manager.wave_number,
                                          debug_stats=True))
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_w:
+                if state == STATE_PLAYING:
+                    player.stats.blue_tokens += 1
             elif (event.type == pygame.KEYDOWN and state == STATE_DEAD
                   and event.key in (pygame.K_r, pygame.K_RETURN)):
                 reset_run()

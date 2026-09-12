@@ -288,6 +288,8 @@ YELLOW_PIP = EnemyConfig(
 # lets the aura do the work instead of rushing in.
 FLAGBEARER_PIPPA_STATS = copy.deepcopy(YELLOW_PIP.base_stats)
 FLAGBEARER_PIPPA_STATS.move_speed *= 0.4
+FLAGBEARER_PIPPA_STATS.shield = 5
+FLAGBEARER_PIPPA_STATS.max_shield = 5
 
 FLAGBEARER_PIPPA = EnemyConfig(
     key="flagbearer_pippa",

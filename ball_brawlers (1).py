@@ -553,6 +553,13 @@ class EyeOfSight(Skill):
                     return
                 target = min(targets, key=lambda candidate: math.hypot(
                     candidate.x - enemy.x, candidate.y - candidate.y))
+            elif player is None:
+                # If player is None and this isn't a player-owned entity, skip targeting
+                if fast_mode:
+                    enemy.eye_of_sight_timer = random.uniform(self.FAST_MIN, self.FAST_MAX)
+                else:
+                    enemy.eye_of_sight_timer = random.uniform(self.NORMAL_MIN, self.NORMAL_MAX)
+                return
 
             dx = target.x - enemy.x
             dy = target.y - enemy.y

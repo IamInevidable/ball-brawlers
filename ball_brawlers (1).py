@@ -574,7 +574,9 @@ class EyeOfSight(Skill):
             else:
                 enemy.eye_of_sight_timer = random.uniform(self.NORMAL_MIN, self.NORMAL_MAX)
             enemy.eye_of_sight_trigger_count += 1
+            # CRITICAL FIX: Force flash color to Red for EyeOfSight
             enemy.skill_flash_timer = self.FLASH_DURATION
+            enemy.skill_flash_color = (255, 0, 0)
             for skill in enemy.skills:
                 skill.on_eye_of_sight_trigger(enemy)
 
@@ -859,12 +861,20 @@ class Flagbearer(Skill):
             self._apply_shield_up(enemy, allies)
     
     def _apply_shield_up(self, entity, allies):
-        """Apply shield regeneration to non-projectile allies"""
+        """Apply shield regeneration to non-projectile allies within radius"""
+        # Visual pulse effect for shield application
+        if hasattr(entity, 'skill_flash_timer'):
+            entity.skill_flash_timer = 0.2
+            entity.skill_flash_color = (100, 149, 237)  # Blue flash for shield
+        
         for ally in allies:
             if ally is entity or not getattr(ally, "alive", True):
                 continue
             # Skip projectiles - only apply to non-projectile entities
             if ally.has_tag("projectile"):
+                continue
+            # Check distance - only affect pips inside Flagbearer radius
+            if math.hypot(ally.x - entity.x, ally.y - entity.y) > self.RADIUS:
                 continue
             # Regenerate shield up to max_shield
             if ally.stats.shield < ally.stats.max_shield:
@@ -959,6 +969,17 @@ class ShieldUp(Skill):
 
 # Registry: name -> skill instance. Add new skills above, then register
 # them here so enemy configs can reference them by name.
+class EnemyEater(Skill):
+    """Heal 5 HP per enemy kill. Can be purchased up to 5 times."""
+    name = "enemy_eater"
+    HEAL_PER_KILL = 5.0
+    
+    def on_damage_dealt(self, attacker, target, amount):
+        if getattr(attacker, "is_player", False) and target.stats.hp <= 0:
+            # Heal the attacker, capped at max HP
+            attacker.stats.hp = min(attacker.stats.hp + self.HEAL_PER_KILL, attacker.stats.max_hp)
+
+
 SKILL_REGISTRY = {
     ContactDamage.name: ContactDamage(),
     EyeOfSight.name: EyeOfSight(),
@@ -973,6 +994,7 @@ SKILL_REGISTRY = {
     Flagbearer.name: Flagbearer(),
     FloweringBud.name: FloweringBud(),
     ShieldUp.name: ShieldUp(),
+    EnemyEater.name: EnemyEater(),
 }
 
 
@@ -2648,6 +2670,12 @@ CARD_CATALOG = (
                         player.add_skill("flowering_bud")),
         max_purchases=1, indicator="SKILL",
         description="Gain 1 HP regen. Each enemy you kill permanently adds 0.02 more.",
+    ),
+    Card(
+        "enemy_eater", "ENEMY EATER", "blue", 5,
+        lambda player: player.add_skill("enemy_eater"),
+        max_purchases=5, indicator="SKILL",
+        description="Heal 5 HP per enemy kill. Can be purchased up to 5 times.",
     ),
     Card(
         "green_pip_pup", "GREEN PIP PUP", "blue", 1,

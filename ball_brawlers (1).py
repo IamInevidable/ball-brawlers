@@ -800,11 +800,10 @@ class Flagbearer(Skill):
     normal cadence. Works on both sides of the fight:
       - On an enemy (e.g. Flagbearer Pippa), "allies" are nearby enemies
         (from `all_enemies`) and the aim target is the player.
-      - On the player, "allies" are the player's own shurikens (from
-        `enemy.summons` - shurikens have no Eye of Sight of their own, so
-        the pulse re-aims them directly) and the aim target is whichever
-        enemy is nearest. Note the `player` parameter is repurposed to
-        carry the enemies list in this case - see Ball.update().
+      - On the player, "allies" are the player's own shurikens and pets
+        (from `enemy.summons` and `enemy.pets`) - the pulse triggers their
+        Eye of Sight skill which in turn triggers their dash ability.
+        The aim target is whichever enemy is nearest.
 
     Also stamps a `flagbearer_pulse_progress` (0 -> 1 sawtooth, synced to
     the owner's cooldown, not each ally's own) onto the owner and every
@@ -831,7 +830,8 @@ class Flagbearer(Skill):
         enemy.flagbearer_pulse_progress = progress
 
         is_player = getattr(enemy, "is_player", False)
-        # Include pets as allies for the player
+        # Include pets as allies for the player - Flagbearer affects anything 
+        # other than itself and enemies (i.e., summons and pets)
         if is_player:
             allies = list(enemy.summons) + list(getattr(enemy, "pets", []))
         else:
@@ -847,6 +847,7 @@ class Flagbearer(Skill):
                 continue
             ally.flagbearer_pulse_progress = progress
             if fire:
+                # Trigger Eye of Sight on the ally, which will trigger its dash ability
                 self._rally(ally, target)
 
     @staticmethod
@@ -860,24 +861,28 @@ class Flagbearer(Skill):
     def _rally(ally, target):
         if getattr(ally, "body_slam_eye_locked", False):
             return
+        # Find the Eye of Sight skill on the ally
         eye_skill = next(
             (skill for skill in getattr(ally, "skills", [])
              if skill.name in ("eye_of_sight", "eye_of_avoidance")), None)
-        # Allies without an Eye skill (shurikens) still get re-aimed - they
-        # just default to chasing rather than fleeing.
-        sign = getattr(eye_skill, "DIRECTION_SIGN", 1)
-        dx = target.x - ally.x
-        dy = target.y - ally.y
-        dist = math.hypot(dx, dy) or 1.0
-        speed = math.hypot(ally.vx, ally.vy) or ally.movement_speed
-        ally.vx = dx / dist * speed * sign
-        ally.vy = dy / dist * speed * sign
+        
+        # If ally has Eye of Sight, trigger it directly - this will handle
+        # the dash/retarget and flash effect through on_eye_of_sight_trigger
         if eye_skill is not None:
+            # Set flash effect first before triggering
             ally.skill_flash_timer = eye_skill.FLASH_DURATION
             if hasattr(eye_skill, "FLASH_COLOR"):
                 ally.skill_flash_color = eye_skill.FLASH_COLOR
-            for skill in ally.skills:
-                skill.on_eye_of_sight_trigger(ally)
+            # Call on_eye_of_sight_trigger to activate the dash ability
+            eye_skill.on_eye_of_sight_trigger(ally)
+        else:
+            # Allies without Eye of Sight still get re-aimed toward target
+            dx = target.x - ally.x
+            dy = target.y - ally.y
+            dist = math.hypot(dx, dy) or 1.0
+            speed = math.hypot(ally.vx, ally.vy) or ally.movement_speed
+            ally.vx = dx / dist * speed
+            ally.vy = dy / dist * speed
 
 
 class FloweringBud(Skill):
@@ -1874,7 +1879,7 @@ class Pet(Combatant):
         self.contact_cooldown_timer = 0.0
         self.spawn_timer = SPAWN_POP_DURATION
         self.skill_flash_timer = 0.0
-        self.skill_flash_duration = 0.0
+        self.skill_flash_duration = EyeOfSight.FLASH_DURATION  # Match Eye of Sight flash duration
         self.body_slam_pending = False
 
         # Initialize skill-specific attributes for pets
@@ -1966,8 +1971,14 @@ class Pet(Combatant):
             pygame.draw.circle(pop_surface, (*PET_RING_COLOR, 255), center, r, 2)
             surface.blit(pop_surface, (int(self.x) - center[0], int(self.y) - center[1]))
             return
+        
+        # Apply skill flash effect (e.g., red flash for Eye of Sight)
+        color = get_skill_flash_color(self.color, self.skill_flash_timer,
+                                      self.skill_flash_duration,
+                                      getattr(self, "skill_flash_color", SKILL_FLASH_COLOR))
+        
         center = (int(self.x), int(self.y))
-        pygame.draw.circle(surface, self.color, center, r)
+        pygame.draw.circle(surface, color, center, r)
         pygame.draw.circle(surface, self.outline_color, center, r, 2)
         pygame.draw.circle(surface, PET_RING_COLOR, center, r + 3, 2)
 

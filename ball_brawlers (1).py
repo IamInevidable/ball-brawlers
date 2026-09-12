@@ -63,6 +63,8 @@ class Stats:
     mini_shurikens_enabled: bool = False
     shuriken_split_count: int = 2
     rage_level: int = 0
+    shield: float = 0
+    max_shield: float = 1
     # Percent bonuses applied to every pet a player owns (see the Pet
     # class and PET POWER! card) - read live off the owner's stats each
     # frame rather than baked into any one pet, so buying more copies of
@@ -808,7 +810,9 @@ class Flagbearer(Skill):
     Also stamps a `flagbearer_pulse_progress` (0 -> 1 sawtooth, synced to
     the owner's cooldown, not each ally's own) onto the owner and every
     ally currently in range each frame, purely for rendering - main.py
-    uses it to draw a synchronized "buffed" pulse ring."""
+    uses it to draw a synchronized "buffed" pulse ring.
+    
+    Additionally triggers ShieldUp skill to regenerate shield for allies."""
     name = "flagbearer"
     RALLY_INTERVAL = 0.75
     RADIUS = 22 * 5  # player ball's BALL_RADIUS (22) x5
@@ -849,6 +853,22 @@ class Flagbearer(Skill):
             if fire:
                 # Trigger Eye of Sight on the ally, which will trigger its dash ability
                 self._rally(ally, target)
+        
+        # Also trigger ShieldUp for non-projectile allies
+        if fire:
+            self._apply_shield_up(enemy, allies)
+    
+    def _apply_shield_up(self, entity, allies):
+        """Apply shield regeneration to non-projectile allies"""
+        for ally in allies:
+            if ally is entity or not getattr(ally, "alive", True):
+                continue
+            # Skip projectiles - only apply to non-projectile entities
+            if ally.has_tag("projectile"):
+                continue
+            # Regenerate shield up to max_shield
+            if ally.stats.shield < ally.stats.max_shield:
+                ally.stats.shield = min(ally.stats.shield + 1, ally.stats.max_shield)
 
     @staticmethod
     def _nearest(enemy, candidates):
@@ -900,6 +920,43 @@ class FloweringBud(Skill):
             attacker.stats.hp_regen += self.REGEN_PER_KILL
 
 
+class ShieldUp(Skill):
+    """Aura skill: regenerates 1 shield per pulse for all non-projectile allies
+    within radius. Works on both sides - enemies get shield from enemy Flagbearer,
+    player summons/pets get shield from player Flagbearer."""
+    name = "shield_up"
+    SHIELD_INTERVAL = 1.0  # seconds between shield ticks
+    RADIUS = 22 * 5  # Same as Flagbearer radius
+    SHIELD_PER_TICK = 1
+    
+    def on_spawn(self, entity):
+        entity.shield_up_timer = self.SHIELD_INTERVAL
+    
+    def update(self, entity, dt, player, arena_rect, all_enemies=None):
+        entity.shield_up_timer -= dt
+        if entity.shield_up_timer <= 0:
+            entity.shield_up_timer += self.SHIELD_INTERVAL
+            # Apply shield to allies
+            is_player = getattr(entity, "is_player", False)
+            if is_player:
+                allies = list(entity.summons) + list(getattr(entity, "pets", []))
+            else:
+                allies = all_enemies or []
+            
+            for ally in allies:
+                if ally is entity or not getattr(ally, "alive", True):
+                    continue
+                if math.hypot(ally.x - entity.x, ally.y - entity.y) > self.RADIUS:
+                    continue
+                # Skip projectiles - only apply to non-projectile entities
+                if ally.has_tag("projectile"):
+                    continue
+                # Regenerate shield up to max_shield
+                if ally.stats.shield < ally.stats.max_shield:
+                    ally.stats.shield = min(ally.stats.shield + self.SHIELD_PER_TICK, 
+                                           ally.stats.max_shield)
+
+
 # Registry: name -> skill instance. Add new skills above, then register
 # them here so enemy configs can reference them by name.
 SKILL_REGISTRY = {
@@ -915,6 +972,7 @@ SKILL_REGISTRY = {
     BountyBump.name: BountyBump(),
     Flagbearer.name: Flagbearer(),
     FloweringBud.name: FloweringBud(),
+    ShieldUp.name: ShieldUp(),
 }
 
 
@@ -1286,6 +1344,13 @@ class Combatant:
     def take_damage(self, amount, attacker=None, flash_color=(255, 245, 245),
                     fire_skill_hooks=False, emit_damage_event=True):
         if amount <= 0:
+            return
+        # Shield negates one instance of damage completely and consumes 1 shield
+        if self.stats.max_shield > 0 and self.stats.shield > 0:
+            self.stats.shield -= 1
+            if emit_damage_event:
+                # Blue flash for shield block
+                self.damage_events.append((0, self.x, self.y, (100, 149, 237)))
             return
         self.stats.hp = max(0.0, self.stats.hp - amount)
         if emit_damage_event:
@@ -1747,6 +1812,7 @@ class Enemy(Combatant):
 
 class ShurikenProjectile(Combatant):
     """An allied, fragile shuriken ball summoned by Way of Ninja."""
+    tags = ("projectile",)
 
     def __init__(self, x, y, summoner_stats, angle, stat_scale=1.0,
                  is_mini=False):

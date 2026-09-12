@@ -2895,7 +2895,7 @@ def draw_hp_bar(surface, rect, pct, bg_color, fill_color, border_color,
 
 
 def draw_enemy_health_bar(surface, enemy):
-    """Draw a small HP bar above an enemy's current visual radius."""
+    """Draw a small HP bar above an enemy's current visual radius with shield segments."""
     if not enemy.alive or enemy.stats.max_hp <= 0:
         return
     percent = hp_percent(enemy.stats)
@@ -2906,6 +2906,19 @@ def draw_enemy_health_bar(surface, enemy):
     fill_color = (75, 220, 95) if percent > 0.5 else (235, 80, 65)
     draw_hp_bar(surface, rect, percent, (35, 20, 25), fill_color,
                (225, 225, 230), border_radius=2, border_width=1)
+    
+    # Draw shield bar if entity has shields
+    max_shield = getattr(enemy.stats, 'max_shield', 0)
+    current_shield = getattr(enemy.stats, 'shield', 0)
+    if max_shield > 0:
+        shield_y = rect.top - 4
+        segment_width = width / max_shield
+        # Draw background
+        pygame.draw.rect(surface, (30, 30, 50), (rect.x, shield_y, width, 4))
+        # Draw active shield segments (Blue)
+        for i in range(int(current_shield)):
+            seg_x = rect.x + (i * segment_width)
+            pygame.draw.rect(surface, (100, 149, 237), (seg_x, shield_y, segment_width, 4))
 
 
 def draw_health_bar(surface, font, ball, screen_height):
@@ -2927,6 +2940,19 @@ def draw_health_bar(surface, font, ball, screen_height):
     hp_text = font.render(f"{int(ball.stats.hp)} / {int(ball.stats.max_hp)}", True, HEALTHBAR_TEXT_COLOR)
     text_rect = hp_text.get_rect(center=bg_rect.center)
     surface.blit(hp_text, text_rect)
+    
+    # Draw shield bar if player has shields
+    max_shield = getattr(ball.stats, 'max_shield', 0)
+    current_shield = getattr(ball.stats, 'shield', 0)
+    if max_shield > 0:
+        shield_y = bg_rect.top - 8
+        segment_width = HEALTHBAR_WIDTH / max_shield
+        # Draw background
+        pygame.draw.rect(surface, (30, 30, 50), (bar_x, shield_y, HEALTHBAR_WIDTH, 6))
+        # Draw active shield segments (Blue)
+        for i in range(int(current_shield)):
+            seg_x = bar_x + (i * segment_width)
+            pygame.draw.rect(surface, (100, 149, 237), (seg_x, shield_y, segment_width, 6))
 
 
 def draw_death_screen(surface, title_font, info_font, screen_width, screen_height,
